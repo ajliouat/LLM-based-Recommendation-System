@@ -1,0 +1,12 @@
+[
+    { "id": 1, "name": "Tesla Model S", "description": "High-performance electric sedan with long driving range." },
+    { "id": 2, "name": "Nissan Leaf", "description": "Affordable and reliable electric hatchback for daily commutes." },
+    { "id": 3, "name": "Toyota Camry", "description": "Popular mid-size sedan known for its reliability and comfort." },
+    { "id": 4, "name": "Chevrolet Bolt", "description": "Compact electric hatchback with impressive range and technology features." },
+    { "id": 5, "name": "Ford Mustang Mach-E", "description": "Electric SUV with sporty performance and sleek design." },
+    { "id": 6, "name": "Honda Accord", "description": "Well-rounded mid-size sedan with a spacious interior and fuel efficiency." },
+    { "id": 7, "name": "BMW i3", "description": "Compact electric car with a unique design and premium features." },
+    { "id": 8, "name": "Audi e-tron", "description": "Luxury electric SUV with advanced technology and refined craftsmanship." },
+    { "id": 9, "name": "Hyundai Kona Electric", "description": "Affordable electric SUV with impressive driving range." },
+    { "id": 10, "name": "Porsche Taycan", "description": "High-performance electric sports car with cutting-edge technology." }
+]
