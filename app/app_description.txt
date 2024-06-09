@@ -2,6 +2,88 @@
 --- File: Dockerfile ---
 Content:
 ```js
+# Build stage 
+FROM python:3.9-slim-buster as build 
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements file
+COPY src/requirements.txt .
+
+# Install the required packages
+RUN pip install --no-cache-dir -i https://pypi.org/simple -r requirements.txt && \
+    pip install --no-cache-dir -i https://pypi.org/simple --pre onnxruntime-genai && \
+    pip install --no-cache-dir -i https://pypi.org/simple huggingface-hub
+
+# Download the model using huggingface-cli
+RUN huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir ./cpu_and_mobile
+
+# Runtime stage
+FROM python:3.9-slim-buster
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the installed packages from the build stage
+COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=build /app/cpu_and_mobile /app/cpu_and_mobile
+
+# Copy the source code
+COPY src/ .
+
+# Set the command to run the main.py script
+CMD ["python", "main.py"]
+```
+
+--- File: app_description.txt ---
+Content:
+```js
+
+--- File: Dockerfile ---
+Content:
+```js
+# Build stage
+FROM python:3.9-slim-buster as build
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements file
+COPY src/requirements.txt .
+
+# Install the required packages
+RUN pip install --no-cache-dir -i https://pypi.org/simple -r requirements.txt && \
+    pip install --no-cache-dir -i https://pypi.org/simple --pre onnxruntime-genai && \
+    pip install --no-cache-dir -i https://pypi.org/simple huggingface-hub
+
+# Download the model using huggingface-cli
+RUN huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir ./cpu_and_mobile
+
+# Runtime stage
+FROM python:3.9-slim-buster
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the installed packages from the build stage
+COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=build /app/cpu_and_mobile /app/cpu_and_mobile
+
+# Copy the source code
+COPY src/ .
+
+# Set the command to run the main.py script
+CMD ["python", "main.py"]
+```
+
+--- File: app_description.txt ---
+Content:
+```js
+
+--- File: Dockerfile ---
+Content:
+```js
 # Build stage
 FROM python:3.9-slim-buster as build
 
@@ -1253,3 +1335,547 @@ Content:
 ```
 
 === Directory: tests ===
+
+```
+
+=== Directory: src ===
+
+--- File: src/__init__.py ---
+Content:
+```js
+# Empty file to make src a package
+```
+
+--- File: src/context_memory.py ---
+Content:
+```js
+from typing import List
+
+class ContextMemory:
+    """A class to manage the conversation history and provide the relevant context."""
+    def __init__(self, max_history_length: int = 5):
+        self.memory: List[str] = []
+        self.max_history_length: int = max_history_length
+
+    def update_memory(self, user_prompt: str) -> None:
+        """Updates the conversation history by adding the user prompt and limiting the history length."""
+        self.memory.append(f"<|user|>\n{user_prompt}<|end|>")
+        if len(self.memory) > self.max_history_length:
+            self.memory.pop(0)
+
+    def get_context(self) -> str:
+        """Retrieves the conversation history as a string."""
+        return "".join(self.memory)
+```
+
+--- File: src/embedding_provider.py ---
+Content:
+```js
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+class EmbeddingProvider:
+    """A class to generate embeddings for text queries using a pre-trained sentence transformer model."""
+    def __init__(self, model_name: str):
+        self.model = SentenceTransformer(model_name)
+
+    def get_embedding(self, query: str) -> np.ndarray:
+        """Generates the embedding for a given text query."""
+        return self.model.encode(query)
+```
+
+--- File: src/faiss_indexer.py ---
+Content:
+```js
+import numpy as np
+import faiss
+
+class FaissIndexer:
+    """A class to create and search a FAISS index for efficient similarity search."""
+    def __init__(self, embedding_size: int):
+        self.index = faiss.IndexFlatL2(embedding_size)
+
+    def add_items(self, item_embeddings: np.ndarray) -> None:
+        """Adds item embeddings to the FAISS index."""
+        self.index.add(item_embeddings)
+
+    def search(self, query_embedding: np.ndarray, top_k: int = 3) -> np.ndarray:
+        """Searches the FAISS index for the top-k most similar items to the query embedding."""
+        _, indices = self.index.search(query_embedding, top_k)
+        return indices[0]
+```
+
+--- File: src/main.py ---
+Content:
+```js
+import json
+import numpy as np
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Any
+from search_model import SearchModel
+from embedding_provider import EmbeddingProvider
+from faiss_indexer import FaissIndexer
+
+def load_json_file(file_path: str) -> Dict[str, Any]:
+    """Loads a JSON file and returns its contents as a dictionary."""
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+def load_product_data(file_path: str) -> List[Dict[str, Any]]:
+    """Loads product data from a JSON file."""
+    return load_json_file(file_path)
+
+def load_search_options(file_path: str) -> Dict[str, Any]:
+    """Loads search options from a JSON file."""
+    return load_json_file(file_path)
+
+def process_user_input(user_input: str, conv_model: SearchModel, embedding_provider: EmbeddingProvider, faiss_indexer: FaissIndexer, products: List[Dict[str, Any]]) -> None:
+    """Processes a single user input and generates a response."""
+    start_time = time.time()
+    reformulated_query = conv_model.generate_reformulated_query(user_input)
+    query_embedding = embedding_provider.get_embedding(reformulated_query).reshape(1, -1)
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    print("Assistant:", reformulated_query)
+    print(f"Execution time: {execution_time:.5f} seconds")
+
+    # Print the current state of the conversation history
+    print("Current Conversation History:")
+    print(conv_model.context_memory.get_context())
+
+    # Retrieve top matching products
+    top_indices = faiss_indexer.search(query_embedding)
+    print(f"User query: {user_input}")
+    print(f"Reformulated query: {reformulated_query}")
+    print("Top matches:")
+    for idx in top_indices:
+        product = products[idx]
+        print(f"  - ID: {product['id']}, Name: {product['name']}, Description: {product['description']}")
+
+def main():
+    """The main function that orchestrates the search process."""
+    # Load search options and product data
+    search_options_path = '/app/search_options.json'
+    product_data_path = '/app/product_data.json'
+    search_options = load_search_options(search_options_path)
+    products = load_product_data(product_data_path)
+    product_descriptions = [product['description'] for product in products]
+
+    # Initialize the model and components
+    model_path = '/app/cpu_and_mobile/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4'
+    conv_model = SearchModel(model_path, search_options, max_history_length=5)
+    embedding_provider = EmbeddingProvider('all-mpnet-base-v2')
+    product_embeddings = np.array([embedding_provider.get_embedding(desc) for desc in product_descriptions])
+    faiss_indexer = FaissIndexer(embedding_size=product_embeddings.shape[1])
+    faiss_indexer.add_items(product_embeddings)
+
+    # Pre-load models and data
+    _ = conv_model.generate_reformulated_query("Dummy input")
+    _ = embedding_provider.get_embedding("Dummy query")
+    conv_model.context_memory.memory.clear()  # Clear the dummy input from the conversation history
+
+    # Generation loop
+    with ThreadPoolExecutor() as executor:
+        while True:
+            user_input = input("User: ").strip()
+            if user_input.lower() == 'exit':
+                break
+
+            if not user_input:
+                print("Please enter a valid input.")
+                continue
+
+            executor.submit(process_user_input, user_input, conv_model, embedding_provider, faiss_indexer, products)
+
+if __name__ == "__main__":
+    main()
+```
+
+--- File: src/product_data.json ---
+Content:
+```js
+[
+    { "id": 1, "name": "Tesla Model S", "description": "High-performance electric sedan with long driving range." },
+    { "id": 2, "name": "Nissan Leaf", "description": "Affordable and reliable electric hatchback for daily commutes." },
+    { "id": 3, "name": "Toyota Camry", "description": "Popular mid-size sedan known for its reliability and comfort." },
+    { "id": 4, "name": "Chevrolet Bolt", "description": "Compact electric hatchback with impressive range and technology features." },
+    { "id": 5, "name": "Ford Mustang Mach-E", "description": "Electric SUV with sporty performance and sleek design." },
+    { "id": 6, "name": "Honda Accord", "description": "Well-rounded mid-size sedan with a spacious interior and fuel efficiency." },
+    { "id": 7, "name": "BMW i3", "description": "Compact electric car with a unique design and premium features." },
+    { "id": 8, "name": "Audi e-tron", "description": "Luxury electric SUV with advanced technology and refined craftsmanship." },
+    { "id": 9, "name": "Hyundai Kona Electric", "description": "Affordable electric SUV with impressive driving range." },
+    { "id": 10, "name": "Porsche Taycan", "description": "High-performance electric sports car with cutting-edge technology." }
+]
+```
+
+--- File: src/requirements.txt ---
+Content:
+```js
+numpy>=1.21.0
+faiss-cpu>=1.7.0
+sentence-transformers>=2.2.0
+```
+
+--- File: src/search_model.py ---
+Content:
+```js
+import onnxruntime_genai as og
+from context_memory import ContextMemory
+from typing import Dict, Any
+
+class SearchModel:
+    """A class to generate reformulated queries based on user input and conversation history."""
+    def __init__(self, model_path: str, search_options: Dict[str, Any], max_history_length: int = 5):
+        self.model = og.Model(model_path)
+        self.tokenizer = og.Tokenizer(self.model)
+        self.search_options = search_options
+        self.context_memory = ContextMemory(max_history_length)
+
+    def generate_reformulated_query(self, input_text: str) -> str:
+        """Generates a reformulated query based on the user input and conversation history."""
+        conversation_history = self.context_memory.get_context()
+        self.context_memory.update_memory(input_text)
+        full_prompt = f"{conversation_history}<|user|>\nYou're an assistant that helps capture the evolving intent of the user and reformulate on a question. The user's previous history that may be related to the current input:\n{conversation_history}\nThe current user request input is: {input_text}\nReformulate the current input in the form of a question that captures only the recent request of the user. You need to consider only the relevant parts of the previous search history to capture the user's most recent intent. When taking into consideration the previous history of search the most recent one may be more related to the current user prompt.\n<|end|><|user|>\n{input_text}<|end|><|assistant|>"
+        input_tokens = self.tokenizer.encode(full_prompt)
+        params = og.GeneratorParams(self.model)
+        params.set_search_options(**self.search_options)
+        params.input_ids = input_tokens
+        generator = og.Generator(self.model, params)
+        response_tokens = []
+        while not generator.is_done():
+            generator.compute_logits()
+            generator.generate_next_token()
+            new_token = generator.get_next_tokens()[0]
+            response_tokens.append(new_token)
+        reformulated_query = self.tokenizer.decode(response_tokens)
+        reformulated_query = reformulated_query.split('<|assistant|>')[-1].strip()
+        return reformulated_query
+```
+
+--- File: src/search_options.json ---
+Content:
+```js
+{
+    "max_length": 1000,
+    "num_return_sequences": 1,
+    "temperature": 0.7,
+    "top_k": 50,
+    "top_p": 0.9,
+    "repetition_penalty": 2.0,
+    "do_sample": true
+}
+```
+
+=== Directory: src/utils ===
+
+--- File: src/utils/init.py ---
+Content:
+```js
+# Empty file to make utils a package
+```
+
+=== Directory: tests ===
+
+--- File: tests/test_search_model.py ---
+Content:
+```js
+import pytest
+from search_model import SearchModel
+
+def test_generate_reformulated_query():
+    # Test case 1: Check if the reformulated query is generated correctly
+    model_path = '/app/cpu_and_mobile/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4'
+    search_options = {
+        "max_length": 1000,
+        "num_return_sequences": 1,
+        "temperature": 0.7,
+        "top_k": 50,
+        "top_p": 0.9,
+        "repetition_penalty": 2.0,
+        "do_sample": True
+    }
+    conv_model = SearchModel(model_path, search_options, max_history_length=5)
+    user_input = "What are the best electric cars?"
+    reformulated_query = conv_model.generate_reformulated_query(user_input)
+    assert reformulated_query.startswith("What are")
+
+    # Test case 2: Check if the conversation history is updated correctly
+    user_input_2 = "How about affordable electric cars?"
+    reformulated_query_2 = conv_model.generate_reformulated_query(user_input_2)
+    assert user_input in conv_model.context_memory.get_context()
+    assert user_input_2 in conv_model.context_memory.get_context()
+```
+
+```
+
+=== Directory: src ===
+
+--- File: src/__init__.py ---
+Content:
+```js
+# Empty file to make src a package
+```
+
+--- File: src/context_memory.py ---
+Content:
+```js
+from typing import List
+
+class ContextMemory:
+    """A class to manage the conversation history and provide the relevant context."""
+    def __init__(self, max_history_length: int = 5):
+        self.memory: List[str] = []
+        self.max_history_length: int = max_history_length
+
+    def update_memory(self, user_prompt: str) -> None:
+        """Updates the conversation history by adding the user prompt and limiting the history length."""
+        self.memory.append(f"<|user|>\n{user_prompt}<|end|>")
+        if len(self.memory) > self.max_history_length:
+            self.memory.pop(0)
+
+    def get_context(self) -> str:
+        """Retrieves the conversation history as a string."""
+        return "".join(self.memory)
+```
+
+--- File: src/embedding_provider.py ---
+Content:
+```js
+import numpy as np
+from sentence_transformers import SentenceTransformer
+
+class EmbeddingProvider:
+    """A class to generate embeddings for text queries using a pre-trained sentence transformer model."""
+    def __init__(self, model_name: str):
+        self.model = SentenceTransformer(model_name)
+
+    def get_embedding(self, query: str) -> np.ndarray:
+        """Generates the embedding for a given text query."""
+        return self.model.encode(query)
+```
+
+--- File: src/faiss_indexer.py ---
+Content:
+```js
+import numpy as np
+import faiss
+
+class FaissIndexer:
+    """A class to create and search a FAISS index for efficient similarity search."""
+    def __init__(self, embedding_size: int):
+        self.index = faiss.IndexFlatL2(embedding_size)
+
+    def add_items(self, item_embeddings: np.ndarray) -> None:
+        """Adds item embeddings to the FAISS index."""
+        self.index.add(item_embeddings)
+
+    def search(self, query_embedding: np.ndarray, top_k: int = 3) -> np.ndarray:
+        """Searches the FAISS index for the top-k most similar items to the query embedding."""
+        _, indices = self.index.search(query_embedding, top_k)
+        return indices[0]
+```
+
+--- File: src/main.py ---
+Content:
+```js
+import json
+import numpy as np
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Any
+from search_model import SearchModel
+from embedding_provider import EmbeddingProvider
+from faiss_indexer import FaissIndexer
+
+def load_json_file(file_path: str) -> Dict[str, Any]:
+    """Loads a JSON file and returns its contents as a dictionary."""
+    with open(file_path, 'r') as file:
+        return json.load(file)
+
+def load_product_data(file_path: str) -> List[Dict[str, Any]]:
+    """Loads product data from a JSON file."""
+    return load_json_file(file_path)
+
+def load_search_options(file_path: str) -> Dict[str, Any]:
+    """Loads search options from a JSON file."""
+    return load_json_file(file_path)
+
+def process_user_input(user_input: str, conv_model: SearchModel, embedding_provider: EmbeddingProvider, faiss_indexer: FaissIndexer, products: List[Dict[str, Any]]) -> None:
+    """Processes a single user input and generates a response."""
+    start_time = time.time()
+    reformulated_query = conv_model.generate_reformulated_query(user_input)
+    query_embedding = embedding_provider.get_embedding(reformulated_query).reshape(1, -1)
+    end_time = time.time()
+    execution_time = end_time - start_time
+
+    print("Assistant:", reformulated_query)
+    print(f"Execution time: {execution_time:.5f} seconds")
+
+    # Print the current state of the conversation history
+    print("Current Conversation History:")
+    print(conv_model.context_memory.get_context())
+
+    # Retrieve top matching products
+    top_indices = faiss_indexer.search(query_embedding)
+    print(f"User query: {user_input}")
+    print(f"Reformulated query: {reformulated_query}")
+    print("Top matches:")
+    for idx in top_indices:
+        product = products[idx]
+        print(f"  - ID: {product['id']}, Name: {product['name']}, Description: {product['description']}")
+
+def main():
+    """The main function that orchestrates the search process."""
+    # Load search options and product data
+    search_options_path = 'search_options.json'
+    product_data_path = 'product_data.json'
+    search_options = load_search_options(search_options_path)
+    products = load_product_data(product_data_path)
+    product_descriptions = [product['description'] for product in products]
+
+    # Initialize the model and components
+    model_path = 'cpu_and_mobile/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4'
+    conv_model = SearchModel(model_path, search_options, max_history_length=5)
+    embedding_provider = EmbeddingProvider('all-mpnet-base-v2')
+    product_embeddings = np.array([embedding_provider.get_embedding(desc) for desc in product_descriptions])
+    faiss_indexer = FaissIndexer(embedding_size=product_embeddings.shape[1])
+    faiss_indexer.add_items(product_embeddings)
+
+    # Pre-load models and data
+    _ = conv_model.generate_reformulated_query("Dummy input")
+    _ = embedding_provider.get_embedding("Dummy query")
+    conv_model.context_memory.memory.clear()  # Clear the dummy input from the conversation history
+
+    # Generation loop
+    with ThreadPoolExecutor() as executor:
+        while True:
+            user_input = input("User: ").strip()
+            if user_input.lower() == 'exit':
+                break
+
+            if not user_input:
+                print("Please enter a valid input.")
+                continue
+
+            executor.submit(process_user_input, user_input, conv_model, embedding_provider, faiss_indexer, products)
+
+if __name__ == "__main__":
+    main()
+```
+
+--- File: src/product_data.json ---
+Content:
+```js
+[
+    { "id": 1, "name": "Tesla Model S", "description": "High-performance electric sedan with long driving range." },
+    { "id": 2, "name": "Nissan Leaf", "description": "Affordable and reliable electric hatchback for daily commutes." },
+    { "id": 3, "name": "Toyota Camry", "description": "Popular mid-size sedan known for its reliability and comfort." },
+    { "id": 4, "name": "Chevrolet Bolt", "description": "Compact electric hatchback with impressive range and technology features." },
+    { "id": 5, "name": "Ford Mustang Mach-E", "description": "Electric SUV with sporty performance and sleek design." },
+    { "id": 6, "name": "Honda Accord", "description": "Well-rounded mid-size sedan with a spacious interior and fuel efficiency." },
+    { "id": 7, "name": "BMW i3", "description": "Compact electric car with a unique design and premium features." },
+    { "id": 8, "name": "Audi e-tron", "description": "Luxury electric SUV with advanced technology and refined craftsmanship." },
+    { "id": 9, "name": "Hyundai Kona Electric", "description": "Affordable electric SUV with impressive driving range." },
+    { "id": 10, "name": "Porsche Taycan", "description": "High-performance electric sports car with cutting-edge technology." }
+]
+```
+
+--- File: src/requirements.txt ---
+Content:
+```js
+numpy>=1.21.0
+faiss-cpu>=1.7.0
+sentence-transformers>=2.2.0
+```
+
+--- File: src/search_model.py ---
+Content:
+```js
+import onnxruntime_genai as og
+from context_memory import ContextMemory
+from typing import Dict, Any
+
+class SearchModel:
+    """A class to generate reformulated queries based on user input and conversation history."""
+    def __init__(self, model_path: str, search_options: Dict[str, Any], max_history_length: int = 5):
+        self.model = og.Model(model_path)
+        self.tokenizer = og.Tokenizer(self.model)
+        self.search_options = search_options
+        self.context_memory = ContextMemory(max_history_length)
+
+    def generate_reformulated_query(self, input_text: str) -> str:
+        """Generates a reformulated query based on the user input and conversation history."""
+        conversation_history = self.context_memory.get_context()
+        self.context_memory.update_memory(input_text)
+        full_prompt = f"{conversation_history}<|user|>\nYou're an assistant that helps capture the evolving intent of the user and reformulate on a question. The user's previous history that may be related to the current input:\n{conversation_history}\nThe current user request input is: {input_text}\nReformulate the current input in the form of a question that captures only the recent request of the user. You need to consider only the relevant parts of the previous search history to capture the user's most recent intent. When taking into consideration the previous history of search the most recent one may be more related to the current user prompt.\n<|end|><|user|>\n{input_text}<|end|><|assistant|>"
+        input_tokens = self.tokenizer.encode(full_prompt)
+        params = og.GeneratorParams(self.model)
+        params.set_search_options(**self.search_options)
+        params.input_ids = input_tokens
+        generator = og.Generator(self.model, params)
+        response_tokens = []
+        while not generator.is_done():
+            generator.compute_logits()
+            generator.generate_next_token()
+            new_token = generator.get_next_tokens()[0]
+            response_tokens.append(new_token)
+        reformulated_query = self.tokenizer.decode(response_tokens)
+        reformulated_query = reformulated_query.split('<|assistant|>')[-1].strip()
+        return reformulated_query
+```
+
+--- File: src/search_options.json ---
+Content:
+```js
+{
+    "max_length": 1000,
+    "num_return_sequences": 1,
+    "temperature": 0.7,
+    "top_k": 50,
+    "top_p": 0.9,
+    "repetition_penalty": 2.0,
+    "do_sample": true
+}
+```
+
+=== Directory: src/utils ===
+
+--- File: src/utils/init.py ---
+Content:
+```js
+# Empty file to make utils a package
+```
+
+=== Directory: tests ===
+
+--- File: tests/test_search_model.py ---
+Content:
+```js
+import pytest
+from search_model import SearchModel
+
+def test_generate_reformulated_query():
+    # Test case 1: Check if the reformulated query is generated correctly
+    model_path = 'cpu_and_mobile/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4'
+    search_options = {
+        "max_length": 1000,
+        "num_return_sequences": 1,
+        "temperature": 0.7,
+        "top_k": 50,
+        "top_p": 0.9,
+        "repetition_penalty": 2.0,
+        "do_sample": True
+    }
+    conv_model = SearchModel(model_path, search_options, max_history_length=5)
+    user_input = "What are the best electric cars?"
+    reformulated_query = conv_model.generate_reformulated_query(user_input)
+    assert reformulated_query.startswith("What are")
+
+    # Test case 2: Check if the conversation history is updated correctly
+    user_input_2 = "How about affordable electric cars?"
+    reformulated_query_2 = conv_model.generate_reformulated_query(user_input_2)
+    assert user_input in conv_model.context_memory.get_context()
+    assert user_input_2 in conv_model.context_memory.get_context()
+```
