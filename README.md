@@ -7,7 +7,7 @@
 [![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-1.13.1-orange)](https://onnxruntime.ai/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0.0-red)](https://pytorch.org/)
 
-This project showcases a cutting-edge recommendation system that leverages the state-of-the-art Phi-3 Mini-4K-Instruct model and retrieval-augmented generation (RAG) techniques to deliver highly personalized and context-aware product recommendations. By capturing the user's evolving intent through an iterative process, the system continuously refines its recommendations, ensuring a truly adaptive and engaging user experience.
+This open-source project showcases a cutting-edge recommendation system that leverages the state-of-the-art Phi-3 Mini-4K-Instruct model and retrieval-augmented generation (RAG) techniques to deliver highly personalized and context-aware product recommendations. By capturing the user's evolving intent through an iterative process, the system continuously refines its recommendations, ensuring a truly adaptive and engaging user experience.
 
 ## 🌟 Key Features
 
