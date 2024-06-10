@@ -1,4 +1,4 @@
-# RAG-Based Recommendation System with Phi-3 Mini-4K-Instruct
+# LLM-Based Recommendation System 
 
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -44,7 +44,7 @@ To experience the power of the RAG-based recommendation system firsthand, follow
 
 1. Clone the repository:
    ```
-   git@github.com:ajliouat/rag-based-recommendation-system-with-phi-3-mini-4k-instruct.git
+   git@github.com:ajliouat/LLM-based-Recommendation-System.git
    ```
 
 2. Navigate to the project directory:

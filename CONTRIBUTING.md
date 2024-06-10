@@ -25,7 +25,7 @@ First off, thank you for considering contributing to the RAG-Based Recommendatio
 
 ### Reporting Issues
 
-If you encounter any issues or bugs while using the RAG-Based Recommendation System, please [open an issue](https://github.com/ajliouat/rag-based-recommendation-system-with-phi-3-mini-4k-instruct/issues) on GitHub. When opening an issue, provide as much detail as possible, including:
+If you encounter any issues or bugs while using the RAG-Based Recommendation System, please [open an issue](git@github.com:ajliouat/LLM-based-Recommendation-System.git/issues) on GitHub. When opening an issue, provide as much detail as possible, including:
 
 - A clear and descriptive title
 - Steps to reproduce the issue
@@ -36,7 +36,7 @@ If you encounter any issues or bugs while using the RAG-Based Recommendation Sys
 
 ### Suggesting Enhancements
 
-If you have ideas for new features or improvements, please [open an issue](https://github.com/ajliouat/rag-based-recommendation-system-with-phi-3-mini-4k-instruct/issues) on GitHub. Describe the enhancement in detail, including:
+If you have ideas for new features or improvements, please [open an issue](git@github.com:ajliouat/LLM-based-Recommendation-System.git/issues) on GitHub. Describe the enhancement in detail, including:
 
 - The motivation behind the enhancement
 - The proposed solution or implementation
